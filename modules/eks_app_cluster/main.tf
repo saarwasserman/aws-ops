@@ -16,6 +16,9 @@ data "aws_availability_zones" "available" {
 
 locals {
   cluster_name = "main-eks-${random_string.suffix.result}"
+
+  oidc_issuer_url = module.eks.cluster_oidc_issuer_url
+  oidc_id         = regex("https://oidc.eks.${var.region}.amazonaws.com/id/(.*)", local.oidc_issuer_url)[0]
 }
 
 resource "random_string" "suffix" {
@@ -34,6 +37,8 @@ module "vpc" {
 
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+
+  map_public_ip_on_launch = true 
 
   enable_nat_gateway   = true
   single_nat_gateway   = true
@@ -73,7 +78,7 @@ module "eks" {
   }
 
   vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
+  subnet_ids = concat(module.vpc.private_subnets, module.vpc.public_subnets)
 
   eks_managed_node_groups = {
     gateways = {
@@ -84,6 +89,8 @@ module "eks" {
       min_size     = 1
       max_size     = 3
       desired_size = 1
+
+      subnet_ids    = module.vpc.public_subnets
     }
 
     general-purpose = {
@@ -93,6 +100,17 @@ module "eks" {
       min_size     = 1
       max_size     = 2
       desired_size = 1
+    }
+  }
+
+  node_security_group_additional_rules = {
+    ingress_cluster_istio_webhook = {
+      description                   = "Cluster control plane calls Istio webhook"
+      protocol                      = "tcp"
+      from_port                     = 15017
+      to_port                       = 15017
+      type                          = "ingress"
+      source_cluster_security_group = true
     }
   }
 }
@@ -113,3 +131,4 @@ module "irsa-ebs-csi" {
   role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
   oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
 }
+
