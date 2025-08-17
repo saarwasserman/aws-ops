@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: aws-node-termination-handler
+  namespace: kube-system
+  labels:
+    app: aws-node-termination-handler
+spec:
+  selector:
+    matchLabels:
+      app: aws-node-termination-handler
+  template:
+    metadata:
+      labels:
+        app: aws-node-termination-handler
+    spec:
+      serviceAccountName: aws-node-termination-handler
+      containers:
+        - name: aws-node-termination-handler
+          image: amazon/aws-node-termination-handler:v1.20.0
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          env:
+            - name: ENABLE_SPOT_INTERRUPTION_DRAINING
+              value: "true"
+            - name: ENABLE_REBALANCE_MONITORING
+              value: "true"
+            - name: ENABLE_REBALANCE_DRAINING
+              value: "true"
+            - name: ENABLE_SCHEDULED_EVENT_DRAINING
+              value: "true"
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300

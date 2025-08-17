@@ -1,0 +1,19 @@
+# Terraform State Files
+*.tfstate
+*.tfstate.backup
+
+# Terraform Lock Files (for local state)
+.terraform.tfstate.lock.info
+
+# Terraform Cache Directory
+.terraform/
+
+# Saved Plan Files
+*.tfplan
+
+# Variable Definition Files (containing sensitive data)
+# Uncomment or add specific .tfvars files if they contain sensitive information
+# sensitive.tfvars
+# *.auto.tfvars
+
+.DS_Store

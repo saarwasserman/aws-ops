@@ -1,21 +1,19 @@
-# Copyright (c) HashiCorp, Inc.
-# SPDX-License-Identifier: MPL-2.0
-
 provider "aws" {
   region = var.region
 }
 
-# Filter out local zones, which are not currently supported 
-# with managed node groups
+locals {
+  cluster_name = "main-eks-${random_string.suffix.result}"
+
+  oidc_issuer_url = module.eks.cluster_oidc_issuer_url
+  oidc_id         = regex("https://oidc.eks.${var.region}.amazonaws.com/id/(.*)", local.oidc_issuer_url)[0]
+}
+
 data "aws_availability_zones" "available" {
   filter {
     name   = "opt-in-status"
     values = ["opt-in-not-required"]
   }
-}
-
-locals {
-  cluster_name = "main-eks-${random_string.suffix.result}"
 }
 
 resource "random_string" "suffix" {
@@ -34,6 +32,8 @@ module "vpc" {
 
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+
+  map_public_ip_on_launch = true 
 
   enable_nat_gateway   = true
   single_nat_gateway   = true
@@ -63,9 +63,6 @@ module "eks" {
       service_account_role_arn = module.irsa-ebs-csi.iam_role_arn
     }
     coredns                = {}
-    # eks-pod-identity-agent = {
-    #   before_compute = true
-    # }
     kube-proxy             = {}
     vpc-cni                = {
       before_compute = true
@@ -73,7 +70,7 @@ module "eks" {
   }
 
   vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
+  subnet_ids = concat(module.vpc.private_subnets, module.vpc.public_subnets)
 
   eks_managed_node_groups = {
     gateways = {
@@ -84,6 +81,8 @@ module "eks" {
       min_size     = 1
       max_size     = 3
       desired_size = 1
+
+      subnet_ids    = module.vpc.public_subnets
     }
 
     general-purpose = {
@@ -95,10 +94,47 @@ module "eks" {
       desired_size = 1
     }
   }
+
+  node_security_group_additional_rules = {
+    ingress_cluster_istio_webhook = {
+      description                   = "Cluster control plane calls Istio webhook"
+      protocol                      = "tcp"
+      from_port                     = 15017
+      to_port                       = 15017
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
 }
 
 
-# https://aws.amazon.com/blogs/containers/amazon-ebs-csi-driver-is-now-generally-available-in-amazon-eks-add-ons/ 
+data "aws_eks_cluster" "cluster" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_cluster_auth" "cluster_auth" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_node_group" "gateways_node_group" {
+  cluster_name = module.eks.cluster_name
+  node_group_name = split(":", module.eks.eks_managed_node_groups["gateways"].node_group_id)[1]
+}
+
+provider "kubernetes" {
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.cluster_auth.token
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.cluster_auth.token
+  }
+}
+
 data "aws_iam_policy" "ebs_csi_policy" {
   arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
