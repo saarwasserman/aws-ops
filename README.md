@@ -1,19 +1,13 @@
 
-Overview:
+# Overview
 
-A setup for production/staging/development environments.
-One EKS Cluster for each
+This project's goal, at least the initial one, is to create a kubernetes environment
+on aws using eks for a stable, rich and fun software development.
+It uses istio for gateway (supporting k8s gateway api)
 
-Components:
+## Current Status:
+the eks cluster is created and istio is installed to be used for the gateway using k8s gateway api
+and aws-load-balancer-controller.
 
-1. Domain - website name
-2. DNS Entries - 
-2. route53 - 
-3. ALB - 
-4. EKS
-    - k8s Gateways (Gateway API) - Istio
-
-# Users
-1. Developers
-2. Operators
-3. Root
+The routing to and between service can be done using the k8s gateway api resources HttpRoute and a like.
+Later, as istio is installed we can leverage a service mesh (either sidescar or ambient mode)

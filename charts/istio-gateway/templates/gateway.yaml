@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: main-gateway
+  namespace: istio-gateways
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  gatewayClassName: istio
+  # infrastructure:
+  #   parametersRef:
+  #     group: ""
+  #     kind: ConfigMap
+  #     name: gateway-options
+  #     namespace: istio-system
+  listeners:
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All

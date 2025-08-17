@@ -1,0 +1,30 @@
+# route53 record for Istio Ingress Gateway
+
+# Get the Istio Ingress Gateway service to fetch the NLB DNS name
+data "kubernetes_service" "istio_gateway" {
+  metadata {
+    name      = "istio-ingressgateway"
+    namespace = "istio-system"
+  }
+}
+
+# Data source to fetch the AWS NLB created for Istio Ingress Gateway
+data "aws_lb" "istio_nlb" {
+  name = data.kubernetes_service.istio_gateway.status.0.load_balancer.0.ingress.0.hostname
+}
+
+# Create a Route 53 record for the NLB DNS name
+resource "aws_route53_record" "istio_gateway_record" {
+  zone_id = "YOUR_ROUTE53_ZONE_ID"  # Replace with your hosted zone ID
+  name    = "istio-gateway.example.com"  # Replace with your desired DNS name
+  type    = "A"
+  alias {
+    name                   = data.aws_lb.istio_nlb.dns_name
+    zone_id                = data.aws_lb.istio_nlb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# output "nlb_dns_name" {
+#   value = data.aws_lb.istio_nlb.dns_name
+# }

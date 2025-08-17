@@ -20,10 +20,47 @@ resource "helm_release" "lb_controller" {
     EOF
   ]
 
-  depends_on = [aws_iam_role_policy_attachment.lb_controller_role_policy,module.eks,
-                kubernetes_service_account.aws_lb_controller]
+  set = [
+    {
+      name = "controllerConfig.featureGates.NLBGatewayAPI",
+      value = "true"
+    },
+    {
+      name = "controllerConfig.featureGates.ALBGatewayAPI",
+      value = "true"
+    },
+    {
+      name = "ingressClass",
+      value = "nlb"
+    }
+  ]
+
+  depends_on = [kubernetes_role_binding.aws_lb_controller_role_binding, helm_release.lb_controller_gateway_api, helm_release.istiod]
 }
 
+
+resource "kubernetes_service_account" "aws_lb_controller" {
+  metadata {
+    name      = "aws-load-balancer-controller"
+    namespace = "kube-system"
+    annotations = {
+      "meta.helm.sh/release-name"      = "aws-load-balancer-controller"
+      "meta.helm.sh/release-namespace" = "kube-system"
+      "eks.amazonaws.com/role-arn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eks-lb-controller-role"
+    }
+    labels = {
+      "app.kubernetes.io/managed-by" = "Helm"
+    }
+  }
+
+  depends_on = [ module.eks ]
+}
+
+resource "aws_iam_policy" "lb_controller_policy" {
+  name        = "LBControllerPolicy"
+  description = "IAM policy for AWS Load Balancer Controller"
+  policy = file("iam-policy.json")
+}
 
 resource "aws_iam_role" "lb_controller_role" {
   name               = "eks-lb-controller-role"
@@ -44,20 +81,11 @@ resource "aws_iam_role" "lb_controller_role" {
   })
 }
 
-resource "kubernetes_service_account" "aws_lb_controller" {
-  metadata {
-    name      = "aws-load-balancer-controller"
-    namespace = "kube-system"
-    annotations = {
-      "meta.helm.sh/release-name"      = "aws-load-balancer-controller"
-      "meta.helm.sh/release-namespace" = "kube-system"
-      "eks.amazonaws.com/role-arn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eks-lb-controller-role"
-    }
-    labels = {
-      "app.kubernetes.io/managed-by" = "Helm"
-    }
-  }
+resource "aws_iam_role_policy_attachment" "lb_controller_role_policy" {
+  policy_arn = aws_iam_policy.lb_controller_policy.arn
+  role       = aws_iam_role.lb_controller_role.name
 }
+
 
 resource "kubernetes_role_binding" "aws_lb_controller_role_binding" {
   metadata {
@@ -78,13 +106,13 @@ resource "kubernetes_role_binding" "aws_lb_controller_role_binding" {
   }
 }
 
-resource "aws_iam_policy" "lb_controller_policy" {
-  name        = "LBControllerPolicy"
-  description = "IAM policy for AWS Load Balancer Controller"
-  policy = file("iam-policy.json")
-}
 
-resource "aws_iam_role_policy_attachment" "lb_controller_role_policy" {
-  policy_arn = aws_iam_policy.lb_controller_policy.arn
-  role       = aws_iam_role.lb_controller_role.name
+# K8s Gateway API CRDs
+
+resource "helm_release" "lb_controller_gateway_api" {
+  name       = "aws-lb-load-balancer-k8s-gateway-api"
+  namespace  = "istio-gateways"
+  chart      = "./charts/aws-load-balancer-k8s-gateway-api-crds"
+
+  depends_on = [kubernetes_namespace.istio-gateways]
 }

@@ -1,0 +1,59 @@
+
+## wait for service load balancer deletion sample
+
+resource "null_resource" "wait_for_gateway_deletion" {
+  triggers = {
+      ENDPOINT = sensitive(data.aws_eks_cluster.cluster.endpoint)
+      CERT = sensitive(base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data))
+      TOKEN = data.aws_eks_cluster_auth.cluster_auth.token
+  }
+
+  provisioner "local-exec" {
+    when = destroy
+    command = "tmpfile=$(mktemp) && echo ${self.triggers.CERT} > $tmpfile && kubectl wait -n istio-gateways --server=${self.triggers.ENDPOINT} --token=${self.triggers.TOKEN} --certificate-authority=$tempfile --for=delete services/main-gateway-istio --timeout=600s && rm $tmpfile"
+  }
+
+  depends_on = [helm_release.gateways, helm_release.lb_controller]
+}
+
+## wait for service load balancer creation sample
+
+resource "null_resource" "wait_for_gateway_lb_creation" {
+
+  provisioner "local-exec" {
+    when = create
+    command = "tmpfile=$(mktemp) && echo $CERT > $tmpfile && kubectl wait -n istio-gateways --server=$ENDPOINT --token=$TOKEN --certificate-authority=$tempfile --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' --timeout=300s service/main-gateway-istio --timeout=600s && rm $tmpfile"
+    environment = {
+      ENDPOINT = data.aws_eks_cluster.cluster.endpoint
+      CERT = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+      TOKEN = data.aws_eks_cluster_auth.cluster_auth.token
+    }
+  }
+
+  depends_on = [helm_release.gateways]
+}
+
+
+## wait for load balancer deletion sample
+
+resource "null_resource" "wait_for_load_balancer_deletion" {
+  depends_on = [
+    kubernetes_service.example  # Or any other resource that triggers load balancer deletion
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Waiting for load balancer deletion..."
+      until ! aws elb describe-load-balancers --load-balancer-name ${var.load_balancer_name} --query 'LoadBalancerDescriptions' --output text; do
+        echo "Load balancer still exists, waiting for deletion..."
+        sleep 30
+      done
+      echo "Load balancer deleted successfully!"
+    EOT
+  }
+
+  triggers = {
+    load_balancer_name = var.load_balancer_name  # Make sure the LB name is passed as a variable
+  }
+}
+

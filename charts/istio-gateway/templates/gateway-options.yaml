@@ -1,0 +1,15 @@
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: gateway-options
+#   namespace: istio-gateways
+# data:
+#   deployment: |
+#     metadata:
+#         annotations:
+#             scheme: internet-facing
+#     spec:
+#       template:
+#         spec:
+#           nodeSelector:
+#             eks.amazonaws.com/nodegroup: {{ .Values.nodeGroupName }}

@@ -1,5 +1,3 @@
-# Copyright (c) HashiCorp, Inc.
-# SPDX-License-Identifier: MPL-2.0
 
 data "aws_caller_identity" "current" {}
 
@@ -26,7 +24,6 @@ output "cluster_auth" {
 output "account_id" {
   value = data.aws_caller_identity.current.account_id
 }
-
 
 output "oidc_provider_arn" {
   value = module.eks.oidc_provider_arn

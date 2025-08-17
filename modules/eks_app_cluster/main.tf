@@ -1,17 +1,5 @@
-# Copyright (c) HashiCorp, Inc.
-# SPDX-License-Identifier: MPL-2.0
-
 provider "aws" {
   region = var.region
-}
-
-# Filter out local zones, which are not currently supported 
-# with managed node groups
-data "aws_availability_zones" "available" {
-  filter {
-    name   = "opt-in-status"
-    values = ["opt-in-not-required"]
-  }
 }
 
 locals {
@@ -19,6 +7,13 @@ locals {
 
   oidc_issuer_url = module.eks.cluster_oidc_issuer_url
   oidc_id         = regex("https://oidc.eks.${var.region}.amazonaws.com/id/(.*)", local.oidc_issuer_url)[0]
+}
+
+data "aws_availability_zones" "available" {
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 resource "random_string" "suffix" {
@@ -68,9 +63,6 @@ module "eks" {
       service_account_role_arn = module.irsa-ebs-csi.iam_role_arn
     }
     coredns                = {}
-    # eks-pod-identity-agent = {
-    #   before_compute = true
-    # }
     kube-proxy             = {}
     vpc-cni                = {
       before_compute = true
@@ -116,7 +108,33 @@ module "eks" {
 }
 
 
-# https://aws.amazon.com/blogs/containers/amazon-ebs-csi-driver-is-now-generally-available-in-amazon-eks-add-ons/ 
+data "aws_eks_cluster" "cluster" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_cluster_auth" "cluster_auth" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_node_group" "gateways_node_group" {
+  cluster_name = module.eks.cluster_name
+  node_group_name = split(":", module.eks.eks_managed_node_groups["gateways"].node_group_id)[1]
+}
+
+provider "kubernetes" {
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.cluster_auth.token
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.cluster_auth.token
+  }
+}
+
 data "aws_iam_policy" "ebs_csi_policy" {
   arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
@@ -131,4 +149,3 @@ module "irsa-ebs-csi" {
   role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
   oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
 }
-
